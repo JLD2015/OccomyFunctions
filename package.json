@@ -4,7 +4,7 @@
   "description": "An express application to run Occomy backend functions",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node ./bin/www"
   },
   "author": "",
   "license": "ISC",

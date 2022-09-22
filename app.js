@@ -26,5 +26,4 @@ app.get("/", (req, res) => {
   res.send("<div>Occomy functions server running</div>");
 });
 
-// Export module
-app.listen(3000);
+module.exports = app;
