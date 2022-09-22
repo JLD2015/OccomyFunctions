@@ -5,6 +5,11 @@ var randomIDGenerator =
   require("../functions/randomIDGenerator").randomIDGenerator;
 var router = express.Router();
 
+// To check if server is running
+app.get("/", (req, res) => {
+  res.send("<div>Occomy transaction server running</div>");
+});
+
 // Create a transaction
 router.post("/createtransaction", async (req, res) => {
   // Get the api key
