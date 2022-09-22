@@ -21,7 +21,10 @@ firebase.initializeApp({
   credential: firebase.credential.cert(firebaseServiceAccountKey),
 });
 
-// Export module
-app.listen(3000, () => {
-  console.log(`Example app listening on port ${3000}`);
+// To check if server is running
+app.get("/", (req, res) => {
+  res.send("<div>Occomy functions server running</div>");
 });
+
+// Export module
+app.listen(3000);
