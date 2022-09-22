@@ -1,0 +1,17 @@
+{
+  "name": "occomyfunctions",
+  "version": "1.0.0",
+  "description": "An express application to run Occomy backend functions",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.1",
+    "firebase-admin": "^11.0.1",
+    "morgan": "^1.10.0",
+    "nodemon": "^2.0.20"
+  }
+}
