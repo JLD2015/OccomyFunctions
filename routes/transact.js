@@ -1,14 +1,11 @@
-var decrypt = require("../functions/cryptography").decrypt;
-var express = require("express");
-var firebase = require("firebase-admin");
-var randomIDGenerator =
+const APNsNotification =
+  require("../functions/sendNotification").APNsNotification;
+const decrypt = require("../functions/cryptography").decrypt;
+const express = require("express");
+const firebase = require("firebase-admin");
+const randomIDGenerator =
   require("../functions/randomIDGenerator").randomIDGenerator;
-var router = express.Router();
-
-// To check if server is running
-app.get("/", (req, res) => {
-  res.send("<div>Occomy transaction server running</div>");
-});
+const router = express.Router();
 
 // Create a transaction
 router.post("/createtransaction", async (req, res) => {
@@ -126,6 +123,282 @@ router.post("/createtransaction", async (req, res) => {
     merchantName: merchantName,
   });
   return;
+});
+
+// Approve a transaction
+router.post("/approvetransaction", async (req, res) => {
+  // Get the authorization credentials
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide authorization credentials" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Get the transaction ID
+  if (!req.body.transactionid) {
+    res.status(400);
+    res.json({ status: "Please provide a valid transactionID" });
+    return;
+  }
+  const transactionid = req.body.transactionid;
+
+  // Get the latitude
+  if (!req.body.latitude) {
+    res.status(400);
+    res.json({ status: "Please provide a latitude" });
+    return;
+  }
+  const latitude = req.body.latitude;
+
+  // Get the longitude
+  if (!req.body.longitude) {
+    res.status(400);
+    res.json({ status: "Please provide a longitude" });
+    return;
+  }
+  const longitude = req.body.longitude;
+
+  // Verify the token
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then((decodedToken) => {
+      const uid = decodedToken.uid;
+
+      //Run the transaction
+      try {
+        firebase.firestore().runTransaction(async (transaction) => {
+          // 1. Read operations
+          const transactionDoc = await transaction.get(
+            firebase.firestore().collection("transactions").doc(transactionid)
+          );
+          const transactionData = transactionDoc.data();
+
+          if (!transactionData) {
+            res.status(400);
+            res.json({ status: "Failed" });
+            return;
+          }
+
+          const merchantDoc = await transaction.get(
+            firebase
+              .firestore()
+              .collection("users")
+              .doc(transactionData.merchantID)
+          );
+          const merchantData = merchantDoc.data();
+
+          const customerDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(uid)
+          );
+          const customerData = customerDoc.data();
+
+          // 2. Write operations
+
+          // Make sure customer isn't transacting with himself
+          if (merchantDoc.id == customerDoc.id) {
+            res.status(400);
+            res.json({ status: "Cannot transact with yourself" });
+            return;
+          }
+
+          // Make sure the transaction hasn't already been processed
+          if (transactionData.status != "pending") {
+            res.status(400);
+            res.json({ status: "Transaction already processed" });
+            return;
+          }
+
+          // Update necesary data
+          if (customerData.balance >= transactionData.amount) {
+            // Merchant values
+            transaction.update(
+              firebase
+                .firestore()
+                .collection("users")
+                .doc(transactionData["merchantID"]),
+              {
+                balance: merchantData.balance + transactionData.amount,
+              }
+            );
+
+            // Customer values
+            transaction.update(
+              firebase.firestore().collection("users").doc(uid),
+              {
+                balance: customerData.balance - transactionData.amount,
+              }
+            );
+
+            // Transaction Values
+            transaction.update(
+              firebase
+                .firestore()
+                .collection("transactions")
+                .doc(transactionid),
+              {
+                customerName: customerData.name,
+                customerID: customerDoc.id,
+                customerProfilePhoto: customerData.profilePhotoUrl,
+                status: "approved",
+                date: firebase.firestore.FieldValue.serverTimestamp(),
+                latitude: latitude,
+                longitude: longitude,
+              }
+            );
+
+            // Send notifications to everybody
+
+            // Merchant
+            for (const token of merchantData.APNs) {
+              APNsNotification(
+                token,
+                "Received Payment",
+                `Received R${transactionData.amount.toFixed(2)} from ${
+                  customerData.name
+                }`,
+                function (status, APNsCode) {
+                  if (status == "Failed") {
+                    // Remove the token from the database
+                    firebase
+                      .firestore()
+                      .collection("users")
+                      .doc(merchantDoc.id)
+                      .update({
+                        APNs: firebase.firestore.FieldValue.arrayRemove(
+                          APNsCode
+                        ),
+                      });
+                  }
+                }
+              );
+            }
+
+            // Customer
+            for (const token of customerData.APNs) {
+              APNsNotification(
+                token,
+                "Made Payment",
+                `Paid R${transactionData.amount.toFixed(2)} to ${
+                  merchantData.name
+                }`,
+                function (status, APNsCode) {
+                  if (status == "Failed") {
+                    // Remove the token from the database
+                    firebase
+                      .firestore()
+                      .collection("users")
+                      .doc(merchantDoc.id)
+                      .update({
+                        APNs: firebase.firestore.FieldValue.arrayRemove(
+                          APNsCode
+                        ),
+                      });
+                  }
+                }
+              );
+            }
+
+            res.status(200);
+            res.json({ status: "Success" });
+            return;
+          } else {
+            transaction.update(
+              firebase
+                .firestore()
+                .collection("transactions")
+                .doc(transactionid),
+              {
+                customerName: customerData.name,
+                customerID: customerDoc.id,
+                customerProfilePhoto: customerData.profilePhotoUrl,
+                status: "declined",
+                date: firebase.firestore.FieldValue.serverTimestamp(),
+                latitude: latitude,
+                longitude: longitude,
+              }
+            );
+            res.status(400);
+            res.json({ status: "Failed" });
+            return;
+          }
+        });
+      } catch (e) {
+        // If the transaction was unsuccessful
+        console.log("Transaction failed:", e);
+        res.status(400);
+        res.json({ status: "Failed" });
+        return;
+      }
+    })
+    // If the ID token could not be verified
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
+});
+
+// Decline a transaction
+router.post("/declinetransaction", async (req, res) => {
+  // Get the authorization credentials
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide authorization credentials" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Get the transaction ID
+  if (!req.body.transactionid) {
+    res.status(400);
+    res.json({ status: "Please provide a valid transactionID" });
+    return;
+  }
+  const transactionid = req.body.transactionid;
+
+  // Verify the token
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then((decodedToken) => {
+      const uid = decodedToken.uid;
+
+      // Run transaction
+      try {
+        firebase
+          .firestore()
+          .runTransaction(async (transaction) => {
+            transaction.update(
+              firebase
+                .firestore()
+                .collection("transactions")
+                .doc(transactionid),
+              {
+                status: "declined",
+                date: firebase.firestore.FieldValue.serverTimestamp(),
+              }
+            );
+          })
+          .then(() => {
+            res.status(200);
+            res.json({ status: "Success" });
+            return;
+          });
+      } catch (e) {
+        // If the transaction could not be run
+        res.status(400);
+        res.json({ status: "Failed" });
+        return;
+      }
+    })
+    // If the ID token could not be verified
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
 });
 
 module.exports = router;
