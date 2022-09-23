@@ -1,4 +1,5 @@
 // Import libraries
+var cors = require("cors");
 var express = require("express");
 var logger = require("morgan");
 var firebase = require("firebase-admin");
@@ -10,6 +11,7 @@ var transactRouter = require("./routes/transact");
 var app = express();
 
 // Setup middleware
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(logger("dev"));
