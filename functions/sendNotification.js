@@ -21,7 +21,6 @@ function APNsNotification(deviceToken, title, body, callback) {
   notification.topic = "com.occomy.Occomy";
 
   provider.send(notification, deviceToken).then((result) => {
-    console.log("Did I get here?");
     // see documentation for an explanation of result
     if (result.failed.length > 0) {
       // If we have a bad token, remove it from the database
