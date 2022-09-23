@@ -8,7 +8,7 @@ function APNsNotification(deviceToken, title, body, callback) {
       keyId: "CSV4ZA2D57",
       teamId: "838HD9T5J5",
     },
-    production: false,
+    production: true,
   });
 
   var notification = new apn.Notification();

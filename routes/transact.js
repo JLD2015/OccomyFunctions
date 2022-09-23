@@ -289,7 +289,7 @@ router.post("/approvetransaction", async (req, res) => {
                     firebase
                       .firestore()
                       .collection("users")
-                      .doc(merchantDoc.id)
+                      .doc(customerDoc.id)
                       .update({
                         APNs: firebase.firestore.FieldValue.arrayRemove(
                           APNsCode
@@ -388,6 +388,118 @@ router.post("/declinetransaction", async (req, res) => {
           });
       } catch (e) {
         // If the transaction could not be run
+        res.status(400);
+        res.json({ status: "Failed" });
+        return;
+      }
+    })
+    // If the ID token could not be verified
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
+});
+
+// Decline a transaction
+router.post("/withdrawal", async (req, res) => {
+  // Get the authorization credentials
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide authorization credentials" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Get the amount
+  if (!req.body.amount) {
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  var amount = req.body.amount;
+  if (isNaN(amount)) {
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  amount = Number(amount).toFixed(2);
+  amount = Number(amount)
+
+  // Verify the token
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then((decodedToken) => {
+      const uid = decodedToken.uid;
+      const withdrawalFees = 5;
+
+      // Run transaction
+      try {
+        firebase.firestore().runTransaction(async (transaction) => {
+          // 1. Read operations
+          const userDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(uid)
+          );
+          const userData = userDoc.data();
+
+          // Check whether the user has sufficient funds for a withdrawal
+          if (Number(userData.balance) < amount + withdrawalFees) {
+            res.status(400);
+            res.json({ status: "Insufficient funds" });
+            return;
+          }
+
+          // Update the user's balance and fees
+          transaction.update(
+            firebase.firestore().collection("users").doc(uid),
+            {
+              balance: userData.balance - amount - withdrawalFees,
+            }
+          );
+
+          // Record the withdrawal in the withdrawals collection
+          transaction.set(
+            firebase.firestore().collection("withdrawals").doc(),
+            {
+              amount: amount,
+              date: firebase.firestore.FieldValue.serverTimestamp(),
+              processed: false,
+              userID: uid,
+            }
+          );
+
+          // Send notification to the user
+          for (const token of userData.APNs) {
+            APNsNotification(
+              token,
+              "Withdrawal",
+              `Withdrew R${Number(amount).toFixed(2)}`,
+              function (status, APNsCode) {
+                if (status == "Failed") {
+                  // Remove the token from the database
+                  firebase
+                    .firestore()
+                    .collection("users")
+                    .doc(userDoc.id)
+                    .update({
+                      APNs: firebase.firestore.FieldValue.arrayRemove(APNsCode),
+                    });
+                } else {
+                  console.log("Sent")
+                }
+              }
+            );
+          }
+
+          // Send response
+          res.status(200);
+          res.json({ status: "Success" });
+          return;
+        });
+      } catch (e) {
+        // If the transaction was unsuccessful
+        console.log("Transaction failed:", e);
         res.status(400);
         res.json({ status: "Failed" });
         return;
