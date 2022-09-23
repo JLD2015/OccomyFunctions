@@ -3,6 +3,7 @@ var express = require("express");
 var logger = require("morgan");
 var firebase = require("firebase-admin");
 var firebaseServiceAccountKey = require("./certificates/firebaseServiceAccountKey.json");
+var messagingRouter = require("./routes/messaging");
 var transactRouter = require("./routes/transact");
 
 // Create Express app
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use(logger("dev"));
 
 // Setup routes
+app.use("/messaging", messagingRouter);
 app.use("/transact", transactRouter);
 
 // Initialise firebase
