@@ -1,0 +1,110 @@
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reset Password</title>
+
+    <style>
+      * { margin: 0; padding: 0; border: 0; }
+    </style>
+
+  </head>
+
+  <body>
+
+    <header style="padding-bottom: 10px">
+      <table>
+        <tr>
+          <td>
+            <img id="logo" src="cid:logo.png" style="width:60px;height:60px;" />
+          </td>
+          <td>
+            <h1>Occomy</h1>
+          </td>
+        </tr>
+      </table>
+    </header>
+
+    <div style="background-color: #f5f5f5; border-radius: 25px; padding: 10px;">
+
+      <div class="MainColumn">
+
+        <h2 style="margin: 20px 0px 0px 20px; font-size: 20px;">
+          Provide Assistance
+        </h2>
+
+        <p
+          style="margin: 20px 20px 0px 20px; color: gray; font-size: 16px; line-height: 2;"
+        >
+          A user has requested assistance. Please respond.
+        </p>
+
+        <p
+          style="margin: 20px 20px 0px 20px; color: gray; font-size: 16px; line-height: 2;"
+        >
+          <strong>Name:</strong>
+          {{name}}
+        </p>
+
+        <p
+          style="margin: 20px 20px 0px 20px; color: gray; font-size: 16px; line-height: 2;"
+        >
+          <strong>Email:</strong>
+          {{email}}
+        </p>
+
+        <p
+          style="margin: 20px 20px 0px 20px; color: gray; font-size: 16px; line-height: 2;"
+        >
+          <strong>Phone:</strong>
+          {{phone}}
+        </p>
+
+        <p
+          style="margin: 20px 20px 0px 20px; color: gray; font-size: 16px; line-height: 2;"
+        >
+          <strong>Message:</strong>
+          {{message}}
+        </p>
+
+        <div style="text-align: center;">
+          <a
+            style="
+            background-color: #22577e; 
+            border-radius: 15px; 
+            color: white; 
+            display: inline-block;
+            font-size: 18px; 
+            margin: 20px;
+            padding: 20px 40px; 
+            text-align: center; 
+            text-decoration: none;
+            "
+            href="mailto:{{email}}?subject=We're here to help"
+          >Respond</a>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div
+      style="width: 100vw; text-align: center; font-size: 12px; color: gray;"
+    >
+      <footer>
+        <p style="padding-top: 20px;">
+          ©
+          {{year}}
+          OCCOMY (PTY) LTD
+        </p>
+        <p style="padding-bottom: 20px;">
+          ALL RIGHTS RESERVED
+        </p>
+      </footer>
+    </div>
+
+  </body>
+
+</html>
