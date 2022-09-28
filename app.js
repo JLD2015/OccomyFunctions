@@ -1,15 +1,16 @@
 // Import libraries
-var cors = require("cors");
-var express = require("express");
-var logger = require("morgan");
-var firebase = require("firebase-admin");
-var firebaseServiceAccountKey = require("./certificates/firebaseServiceAccountKey.json");
-var emailRouter = require("./routes/email");
-var messagingRouter = require("./routes/messaging");
-var transactRouter = require("./routes/transact");
+const cors = require("cors");
+const express = require("express");
+const logger = require("morgan");
+const firebase = require("firebase-admin");
+const firebaseServiceAccountKey = require("./certificates/firebaseServiceAccountKey.json");
+const authRouter = require("./routes/auth");
+const emailRouter = require("./routes/email");
+const messagingRouter = require("./routes/messaging");
+const transactRouter = require("./routes/transact");
 
 // Create Express app
-var app = express();
+const app = express();
 
 // Setup middleware
 app.use(cors());
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use(logger("dev"));
 
 // Setup routes
+app.use("/auth", authRouter);
 app.use("/email", emailRouter);
 app.use("/messaging", messagingRouter);
 app.use("/transact", transactRouter);
