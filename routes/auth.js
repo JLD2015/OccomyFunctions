@@ -270,7 +270,153 @@ router.post("/createaccount", async (req, res) => {
 });
 
 // Delete account
-router.post("/createaccount", async (req, res) => {});
+router.post("/deleteaccount", async (req, res) => {
+  // Get the auth token
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide a valid auth token" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Verify the token
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then(async (decodedToken) => {
+      const uid = decodedToken.uid;
+
+      // Get the details for the user
+      const userDoc = await firebase
+        .firestore()
+        .collection("users")
+        .doc(uid)
+        .get();
+      const userData = userDoc.data();
+
+      // Make sure the user doesn't have a balance
+      if (userData.balance != 0) {
+        res.status(400);
+        res.json({ status: "Cannot delete users with a balance" });
+        return;
+      }
+
+      // Record the contact details for the user
+      const data = {
+        date: firebase.firestore.FieldValue.serverTimestamp(),
+        name: userData.name,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber,
+      };
+
+      firebase
+        .firestore()
+        .collection("deletedAccounts")
+        .doc(uid)
+        .set(data)
+        .then(async () => {
+          // Remove the user's depositID
+          firebase
+            .firestore()
+            .collection("users")
+            .doc("depositIDs")
+            .update({
+              depositIDs: firebase.firestore.FieldValue.arrayRemove(
+                userData.depositID
+              ),
+            });
+
+          // Delete the user's profile in the users collection
+          firebase.firestore().collection("users").doc(uid).delete();
+
+          // Delete the user under the XMPP collection
+          firebase.firestore().collection("XMPP").doc(uid).delete();
+
+          // Delete the user under the authorization section
+          firebase.auth().deleteUser(uid);
+
+          // Delete the user's XMPP account
+          const XMPPData = JSON.stringify({
+            user: userData.jid,
+            host: "xmpp.occomy.com",
+          });
+
+          const authorization =
+            `Basic ` +
+            Buffer.from("jdalton@xmpp.occomy.com:Balthazar123!").toString(
+              `base64`
+            );
+
+          const options = {
+            url: "https://xmpp.occomy.com:5443/api/unregister",
+            body: XMPPData,
+            method: "POST",
+            headers: {
+              Authorization: authorization,
+              "Content-Type": "application/json",
+            },
+          };
+
+          request(options, function (error, response) {
+            // Handle error
+            if (error) {
+              console.log(error);
+              res.status(400);
+              res.json({ status: error.message });
+              return;
+            }
+
+            // If successful
+            if (response.statusCode == 200) {
+              // Send account deletion email to user
+              const data = JSON.stringify({
+                email: userData.email,
+              });
+
+              const options = {
+                url: "https://api.occomy.com/email/sendaccountdeletionemail",
+                body: data,
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              };
+
+              request(options, function (error, response) {
+                // Handle error
+                if (error) {
+                  console.log(error);
+                  res.status(400);
+                  res.json({ status: error.message });
+                  return;
+                }
+                if (response.statusCode == 200) {
+                  res.status(200);
+                  res.json({ status: "Success" });
+                  return;
+                } else {
+                  res.status(400);
+                  res.json({
+                    status: "Could not send verify email",
+                  });
+                  return;
+                }
+              });
+            }
+          });
+        }) // If the deleted user could not be recorded
+        .catch(() => {
+          res.status(400);
+          res.json({ status: "Could not delete user, aborting" });
+          return;
+        });
+    }) // If the ID token could not be verified
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
+});
 
 // Export the router
 module.exports = router;
