@@ -39,90 +39,84 @@ router.post("/createtransaction", async (req, res) => {
   }
   const description = req.body.description;
 
-  // Decode the api key
-  var uid = null;
-  try {
-    uid = decrypt(apikey);
-  } catch {
-    res.status(400);
-    res.json({ status: "Invalid API key" });
-    return;
-  }
-
   // Retrieve the merchant's profile
   const merchantDoc = await firebase
     .firestore()
     .collection("users")
-    .doc(uid)
+    .where("apiKey", "==", apikey)
     .get();
-  if (!merchantDoc.exists) {
+
+  if (merchantDoc.empty) {
     res.status(400);
     res.json({ status: "Invalid API key" });
     return;
-  }
+  } else {
+    const merchantID = merchantDoc.docs[0].id;
+    const merchantData = merchantDoc.docs[0].data();
+    const merchantName = merchantData.name;
+    const merchantProfilePhoto = merchantData.profilePhoto;
 
-  const merchantID = merchantDoc.id;
-  const merchantData = merchantDoc.data();
-  const merchantName = merchantData.name;
-  const merchantPhotoURL = merchantData.profilePhotoUrl;
+    // Generate transaction ID
+    var uniqueID = randomIDGenerator(8);
 
-  // Generate transaction ID
-  var uniqueID = randomIDGenerator(8);
-
-  // Make sure transactionID is unique
-  const docRef = firebase
-    .firestore()
-    .collection("transactions")
-    .doc("transactionIDs");
-  const doc = await docRef.get();
-
-  if (!doc.exists) {
-    // If the document doesn't exist we need to create it
-    const data = {
-      transactionIDs: [uniqueID],
-    };
-    await firebase
+    // Make sure transactionID is unique
+    const docRef = firebase
       .firestore()
       .collection("transactions")
-      .doc("transactionIDs")
-      .set(data);
-  } else {
-    // If the document does exist we just add the unique transaction ID
-    const existingIDs = doc.data()["transactionIDs"];
-    while (existingIDs.includes(uniqueID)) {
-      uniqueID = randomIDGenerator(8);
+      .doc("transactionIDs");
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      // If the document doesn't exist we need to create it
+      const data = {
+        transactionIDs: [uniqueID],
+      };
+      await firebase
+        .firestore()
+        .collection("transactions")
+        .doc("transactionIDs")
+        .set(data);
+    } else {
+      // If the document does exist we just add the unique transaction ID
+      const existingIDs = doc.data()["transactionIDs"];
+      while (existingIDs.includes(uniqueID)) {
+        uniqueID = randomIDGenerator(8);
+      }
+      await docRef.update({
+        transactionIDs: firebase.firestore.FieldValue.arrayUnion(uniqueID),
+      });
     }
-    await docRef.update({
-      transactionIDs: firebase.firestore.FieldValue.arrayUnion(uniqueID),
+
+    // Create transaction on firestore
+    const data = {
+      amount: parseFloat(amount),
+      description: description,
+      merchantID: merchantID,
+      merchantName: merchantName,
+      merchantProfilePhoto: merchantProfilePhoto,
+      transactionID: uniqueID,
+      status: "pending",
+      date: firebase.firestore.FieldValue.serverTimestamp(),
+      customerID: " ",
+      customerName: " ",
+      customerProfilePhoto: " ",
+    };
+
+    const res2 = await firebase
+      .firestore()
+      .collection("transactions")
+      .add(data);
+
+    res.status(200);
+    res.json({
+      status: "Success",
+      documentID: res2.id,
+      transactionID: uniqueID,
+      merchantProfilePhoto: merchantProfilePhoto,
+      merchantName: merchantName,
     });
+    return;
   }
-
-  // Create transaction on firestore
-  const data = {
-    amount: parseFloat(amount),
-    description: description,
-    merchantID: merchantID,
-    merchantName: merchantName,
-    merchantProfilePhoto: merchantPhotoURL,
-    transactionID: uniqueID,
-    status: "pending",
-    date: firebase.firestore.FieldValue.serverTimestamp(),
-    customerID: " ",
-    customerName: " ",
-    customerProfilePhoto: " ",
-  };
-
-  const res2 = await firebase.firestore().collection("transactions").add(data);
-
-  res.status(200);
-  res.json({
-    status: "Success",
-    documentID: res2.id,
-    transactionID: uniqueID,
-    merchantProfilePhoto: merchantPhotoURL,
-    merchantName: merchantName,
-  });
-  return;
 });
 
 // Approve a transaction
@@ -424,7 +418,7 @@ router.post("/withdrawal", async (req, res) => {
     return;
   }
   amount = Number(amount).toFixed(2);
-  amount = Number(amount)
+  amount = Number(amount);
 
   // Verify the token
   firebase
@@ -486,7 +480,7 @@ router.post("/withdrawal", async (req, res) => {
                       APNs: firebase.firestore.FieldValue.arrayRemove(APNsCode),
                     });
                 } else {
-                  console.log("Sent")
+                  console.log("Sent");
                 }
               }
             );
