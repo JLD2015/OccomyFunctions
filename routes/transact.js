@@ -234,7 +234,7 @@ router.post("/approvetransaction", async (req, res) => {
               {
                 customerName: customerData.name,
                 customerID: customerDoc.id,
-                customerProfilePhoto: customerData.profilePhotoUrl,
+                customerProfilePhoto: customerData.profilePhoto,
                 status: "approved",
                 date: firebase.firestore.FieldValue.serverTimestamp(),
                 latitude: latitude,
@@ -306,7 +306,7 @@ router.post("/approvetransaction", async (req, res) => {
               {
                 customerName: customerData.name,
                 customerID: customerDoc.id,
-                customerProfilePhoto: customerData.profilePhotoUrl,
+                customerProfilePhoto: customerData.profilePhoto,
                 status: "declined",
                 date: firebase.firestore.FieldValue.serverTimestamp(),
                 latitude: latitude,
