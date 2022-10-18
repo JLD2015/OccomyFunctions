@@ -102,51 +102,30 @@ router.post("/createaccount", async (req, res) => {
               // Create an API key for the user
               const uniqueAPI = uuid();
 
-              // Generate an XMPP account for the user
-              const XMPPUsername = uuid();
-              const XMPPPassword = uuid();
-
-              const XMPPData = JSON.stringify({
-                user: XMPPUsername,
-                host: "xmpp.occomy.com",
-                password: XMPPPassword,
-              });
-
-              const authorization =
-                `Basic ` +
-                Buffer.from("jdalton@xmpp.occomy.com:Balthazar123!").toString(
-                  `base64`
-                );
-              const options = {
-                url: "https://xmpp.occomy.com:5443/api/register",
-                body: XMPPData,
-                method: "POST",
-                headers: {
-                  Authorization: authorization,
-                  "Content-Type": "application/json",
-                },
+              // Upload all of the user's info
+              const data = {
+                apiKey: uniqueAPI,
+                balance: 0,
+                bankAccountNumber: "",
+                bankName: "",
+                compliant: true,
+                depositID: uniqueID,
+                email: email,
+                fcmTokens: [],
+                name: displayname,
+                phoneNumber: phonenumber,
+                profilePhoto: base64Image,
               };
 
-              request(options, function (error, response) {
-                if (error) {
-                  console.log(error);
-                  res.status(400);
-                  res.json({ status: error.message });
-                  return;
-                }
-                if (response.statusCode == 200) {
-                  // Upload all of the user's info
-                  const data = {
-                    APNs: [],
-                    apiKey: uniqueAPI,
-                    balance: 0,
-                    bankAccountNumber: "",
-                    bankName: "",
-                    compliant: true,
-                    depositID: uniqueID,
+              firebase
+                .firestore()
+                .collection("users")
+                .doc(userRecord.uid)
+                .set(data)
+                .then(async () => {
+                  // Create contact entry for user
+                  const contactData = {
                     email: email,
-                    jid: XMPPUsername + "@xmpp.occomy.com",
-                    jidPassword: XMPPPassword,
                     name: displayname,
                     phoneNumber: phonenumber,
                     profilePhoto: base64Image,
@@ -154,94 +133,44 @@ router.post("/createaccount", async (req, res) => {
 
                   firebase
                     .firestore()
-                    .collection("users")
+                    .collection("contacts")
                     .doc(userRecord.uid)
-                    .set(data)
+                    .set(contactData)
                     .then(async () => {
-                      // Create XMPP entry for user
-                      const XMPPData = {
-                        email: email,
-                        jid: XMPPUsername,
+                      // Send verification email
+                      const data = JSON.stringify({
                         name: displayname,
-                        phoneNumber: phonenumber,
+                        email: email,
+                      });
+
+                      const options = {
+                        url: "https://api.occomy.com/email/sendverifyemail",
+                        body: data,
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
                       };
 
-                      firebase
-                        .firestore()
-                        .collection("XMPP")
-                        .doc(userRecord.uid)
-                        .set(XMPPData)
-                        .then(async () => {
-                          // Update the user's name and profile photo on the XMPP server
-                          const xmpp = client({
-                            service: "xmpp://xmpp.occomy.com:5222",
-                            username: XMPPUsername,
-                            password: XMPPPassword,
-                          });
-
-                          xmpp.on("online", async (address) => {
-                            // Update the user's VCard once we are online
-                            const iq = xml(
-                              "iq",
-                              { id: uuid(), type: "set" },
-                              xml(
-                                "vCard",
-                                { xmlns: "vcard-temp" },
-                                xml("FN", {}, displayname),
-                                xml("JABBERID", {}, XMPPUsername),
-                                xml(
-                                  "PHOTO",
-                                  {},
-                                  xml("TYPE", {}, "image/jpeg"),
-                                  xml("BINVAL", {}, base64Image)
-                                )
-                              )
-                            );
-                            await xmpp.send(iq);
-                          });
-
-                          xmpp.start().catch(console.error);
-
-                          const data = JSON.stringify({
-                            name: displayname,
-                            email: email,
-                          });
-
-                          const options = {
-                            url: "https://api.occomy.com/email/sendverifyemail",
-                            body: data,
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                          };
-
-                          request(options, function (error, response) {
-                            if (error) {
-                              console.log(error);
-                              res.status(400);
-                              res.json({ status: error.message });
-                              return;
-                            }
-                            if (response.statusCode == 200) {
-                              res.status(200);
-                              res.json({ status: "Success" });
-                              return;
-                            } else {
-                              res.status(400);
-                              res.json({
-                                status: "Could not send verify email",
-                              });
-                              return;
-                            }
-                          });
-                        })
-                        .catch((error) => {
+                      request(options, function (error, response) {
+                        if (error) {
                           console.log(error);
                           res.status(400);
                           res.json({ status: error.message });
                           return;
-                        });
+                        }
+                        if (response.statusCode == 200) {
+                          res.status(200);
+                          res.json({ status: "Success" });
+                          return;
+                        } else {
+                          res.status(400);
+                          res.json({
+                            status: "Could not send verify email",
+                          });
+                          return;
+                        }
+                      });
                     })
                     .catch((error) => {
                       console.log(error);
@@ -249,8 +178,13 @@ router.post("/createaccount", async (req, res) => {
                       res.json({ status: error.message });
                       return;
                     });
-                }
-              });
+                })
+                .catch((error) => {
+                  console.log(error);
+                  res.status(400);
+                  res.json({ status: error.message });
+                  return;
+                });
             }
           })
           .catch((error) => {
@@ -329,30 +263,22 @@ router.post("/deleteaccount", async (req, res) => {
           // Delete the user's profile in the users collection
           firebase.firestore().collection("users").doc(uid).delete();
 
-          // Delete the user under the XMPP collection
-          firebase.firestore().collection("XMPP").doc(uid).delete();
+          // Delete the user under the contacts collection
+          firebase.firestore().collection("contacts").doc(uid).delete();
 
           // Delete the user under the authorization section
           firebase.auth().deleteUser(uid);
 
-          // Delete the user's XMPP account
-          const XMPPData = JSON.stringify({
-            user: userData.jid,
-            host: "xmpp.occomy.com",
+          // Send account deletion email to user
+          const data = JSON.stringify({
+            email: userData.email,
           });
 
-          const authorization =
-            `Basic ` +
-            Buffer.from("jdalton@xmpp.occomy.com:Balthazar123!").toString(
-              `base64`
-            );
-
           const options = {
-            url: "https://xmpp.occomy.com:5443/api/unregister",
-            body: XMPPData,
+            url: "https://api.occomy.com/email/sendaccountdeletionemail",
+            body: data,
             method: "POST",
             headers: {
-              Authorization: authorization,
               "Content-Type": "application/json",
             },
           };
@@ -365,43 +291,16 @@ router.post("/deleteaccount", async (req, res) => {
               res.json({ status: error.message });
               return;
             }
-
-            // If successful
             if (response.statusCode == 200) {
-              // Send account deletion email to user
-              const data = JSON.stringify({
-                email: userData.email,
+              res.status(200);
+              res.json({ status: "Success" });
+              return;
+            } else {
+              res.status(400);
+              res.json({
+                status: "Could not send verify email",
               });
-
-              const options = {
-                url: "https://api.occomy.com/email/sendaccountdeletionemail",
-                body: data,
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-              };
-
-              request(options, function (error, response) {
-                // Handle error
-                if (error) {
-                  console.log(error);
-                  res.status(400);
-                  res.json({ status: error.message });
-                  return;
-                }
-                if (response.statusCode == 200) {
-                  res.status(200);
-                  res.json({ status: "Success" });
-                  return;
-                } else {
-                  res.status(400);
-                  res.json({
-                    status: "Could not send verify email",
-                  });
-                  return;
-                }
-              });
+              return;
             }
           });
         }) // If the deleted user could not be recorded
@@ -471,7 +370,7 @@ router.post("/updatefinancialdetails", async (req, res) => {
     });
 });
 
-// Update financial details
+// Update profile details
 router.post("/updateprofiledetails", async (req, res) => {
   // Get the auth token
   if (!req.headers.authorization) {
@@ -514,23 +413,6 @@ router.post("/updateprofiledetails", async (req, res) => {
     }
     const phone = fields.phone;
 
-    // Retrieve jid
-    if (!fields.jid) {
-      res.status(400);
-      res.json({ status: "Please provide a jid" });
-      return;
-    }
-    const jidfull = fields.jid;
-    const jid = fields.jid.split("@")[0];
-
-    // Retrieve jid password
-    if (!fields.jidpassword) {
-      res.status(400);
-      res.json({ status: "Please provide a jid password" });
-      return;
-    }
-    const jidpassword = fields.jidpassword;
-
     // Verify the token
     firebase
       .auth()
@@ -551,39 +433,10 @@ router.post("/updateprofiledetails", async (req, res) => {
               profilePhoto: base64Image,
             });
 
-            // 6. Update the user's XMPP VCard
-            const xmpp = client({
-              service: "xmpp://xmpp.occomy.com:5222",
-              username: jid,
-              password: jidpassword,
-            });
+            res.status(200);
+            res.json({ status: "Success" });
+            return;
 
-            // Monitor when we go online
-            xmpp.on("online", async (address) => {
-              const iq = xml(
-                "iq",
-                { id: uuid(), type: "set" },
-                xml(
-                  "vCard",
-                  { xmlns: "vcard-temp" },
-                  xml("FN", {}, name),
-                  xml("JABBERID", {}, jidfull),
-                  xml(
-                    "PHOTO",
-                    {},
-                    xml("TYPE", {}, "image/jpeg"),
-                    xml("BINVAL", {}, base64Image)
-                  )
-                )
-              );
-              await xmpp.send(iq);
-              res.status(200);
-              res.json({ status: "Success" });
-              return;
-            });
-
-            // Fourth we start the XMPP connection
-            xmpp.start().catch(console.error);
           });
         } catch (error) {
           console.log(error);

@@ -507,5 +507,303 @@ router.post("/withdrawal", async (req, res) => {
     });
 });
 
+// Send funds
+router.post("/sendfunds", async (req, res) => {
+  // Get the authorization credentials
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide authorization credentials" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Get the amount
+  if (!req.body.amount) {
+    console.log("In here");
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  var amount = req.body.amount;
+  if (isNaN(amount)) {
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  amount = Number(amount).toFixed(2);
+
+  // Get the description
+  if (!req.body.description) {
+    res.status(400);
+    res.json({ status: "Please provide a valid description" });
+    return;
+  }
+  const description = req.body.description;
+
+  // Get the merchantID
+  if (!req.body.merchantid) {
+    res.status(400);
+    res.json({ status: "Please provide a valid merchantid" });
+    return;
+  }
+  const merchantid = req.body.merchantid;
+
+  // Get the latitude
+  if (!req.body.latitude) {
+    res.status(400);
+    res.json({ status: "Please provide a valid latitude" });
+    return;
+  }
+  const latitude = req.body.latitude;
+  
+  // Get the longitude
+  if (!req.body.longitude) {
+    res.status(400);
+    res.json({ status: "Please provide a valid longitude" });
+    return;
+  }
+  const longitude = req.body.longitude;
+
+  // Validate the user
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then(async (decodedToken) => {
+      // Run transaction
+      try {
+        firebase.firestore().runTransaction(async (transaction) => {
+          const uid = decodedToken.uid;
+
+          // 1. Read operations
+          const customerDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(uid)
+          );
+          const customerData = customerDoc.data();
+
+          const merchantDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(merchantid)
+          );
+          const merchantData = merchantDoc.data();
+
+          // Generate transaction ID
+          var uniqueID = randomIDGenerator(8);
+
+          // Make sure transactionID is unique
+          const docRef = firebase
+            .firestore()
+            .collection("transactions")
+            .doc("transactionIDs");
+          const doc = await docRef.get();
+
+          if (!doc.exists) {
+            // If the document doesn't exist we need to create it
+            const data = {
+              transactionIDs: [uniqueID],
+            };
+            await firebase
+              .firestore()
+              .collection("transactions")
+              .doc("transactionIDs")
+              .set(data);
+          } else {
+            // If the document does exist we just add the unique transaction ID
+            const existingIDs = doc.data()["transactionIDs"];
+            while (existingIDs.includes(uniqueID)) {
+              uniqueID = randomIDGenerator(8);
+            }
+            await docRef.update({
+              transactionIDs:
+                firebase.firestore.FieldValue.arrayUnion(uniqueID),
+            });
+          }
+
+          // Create transaction on firestore
+          const data = {
+            amount: parseFloat(amount),
+            description: description,
+            latitude: latitude,
+            longitude: longitude,
+            merchantID: merchantDoc.id,
+            merchantName: merchantData.name,
+            merchantProfilePhoto: merchantData.profilePhoto,
+            transactionID: uniqueID,
+            status: "approved",
+            date: firebase.firestore.FieldValue.serverTimestamp(),
+            customerID: customerDoc.id,
+            customerName: customerData.name,
+            customerProfilePhoto: customerData.profilePhoto,
+          };
+
+          await firebase.firestore().collection("transactions").add(data);
+
+          res.status(200);
+          res.json({ status: "Success" });
+          return;
+        });
+      } catch (e) {
+        // If the transaction was unsuccessful
+        console.log("Transaction failed:", e);
+        res.status(400);
+        res.json({ status: "Failed" });
+        return;
+      }
+    })
+    // If the user could not be validated
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
+});
+
+// Request payment
+router.post("/requestpayment", async (req, res) => {
+  // Get the authorization credentials
+  if (!req.headers.authorization) {
+    res.status(400);
+    res.json({ status: "Please provide authorization credentials" });
+    return;
+  }
+  const authorization = req.headers.authorization;
+
+  // Get the amount
+  if (!req.body.amount) {
+    console.log("In here");
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  var amount = req.body.amount;
+  if (isNaN(amount)) {
+    res.status(400);
+    res.json({ status: "Please provide a valid amount" });
+    return;
+  }
+  amount = Number(amount).toFixed(2);
+
+  // Get the description
+  if (!req.body.description) {
+    res.status(400);
+    res.json({ status: "Please provide a valid description" });
+    return;
+  }
+  const description = req.body.description;
+
+  // Get the merchantID
+  if (!req.body.customerid) {
+    res.status(400);
+    res.json({ status: "Please provide a valid customerid" });
+    return;
+  }
+  const customerid = req.body.customerid;
+
+  // Get the latitude
+  if (!req.body.latitude) {
+    res.status(400);
+    res.json({ status: "Please provide a valid latitude" });
+    return;
+  }
+  const latitude = req.body.latitude;
+  
+  // Get the longitude
+  if (!req.body.longitude) {
+    res.status(400);
+    res.json({ status: "Please provide a valid longitude" });
+    return;
+  }
+  const longitude = req.body.longitude;
+
+  // Validate the user
+  firebase
+    .auth()
+    .verifyIdToken(authorization)
+    .then(async (decodedToken) => {
+      // Run transaction
+      try {
+        firebase.firestore().runTransaction(async (transaction) => {
+          const uid = decodedToken.uid;
+
+          // 1. Read operations
+          const customerDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(customerid)
+          );
+          const customerData = customerDoc.data();
+
+          const merchantDoc = await transaction.get(
+            firebase.firestore().collection("users").doc(uid)
+          );
+          const merchantData = merchantDoc.data();
+
+          // Generate transaction ID
+          var uniqueID = randomIDGenerator(8);
+
+          // Make sure transactionID is unique
+          const docRef = firebase
+            .firestore()
+            .collection("transactions")
+            .doc("transactionIDs");
+          const doc = await docRef.get();
+
+          if (!doc.exists) {
+            // If the document doesn't exist we need to create it
+            const data = {
+              transactionIDs: [uniqueID],
+            };
+            await firebase
+              .firestore()
+              .collection("transactions")
+              .doc("transactionIDs")
+              .set(data);
+          } else {
+            // If the document does exist we just add the unique transaction ID
+            const existingIDs = doc.data()["transactionIDs"];
+            while (existingIDs.includes(uniqueID)) {
+              uniqueID = randomIDGenerator(8);
+            }
+            await docRef.update({
+              transactionIDs:
+                firebase.firestore.FieldValue.arrayUnion(uniqueID),
+            });
+          }
+
+          // Create transaction on firestore
+          const data = {
+            amount: parseFloat(amount),
+            description: description,
+            latitude: latitude,
+            longitude: longitude,
+            merchantID: merchantDoc.id,
+            merchantName: merchantData.name,
+            merchantProfilePhoto: merchantData.profilePhoto,
+            transactionID: uniqueID,
+            status: "requested",
+            date: firebase.firestore.FieldValue.serverTimestamp(),
+            customerID: customerDoc.id,
+            customerName: customerData.name,
+            customerProfilePhoto: customerData.profilePhoto,
+          };
+
+          await firebase.firestore().collection("transactions").add(data);
+
+          res.status(200);
+          res.json({ status: "Success" });
+          return;
+        });
+      } catch (e) {
+        // If the transaction was unsuccessful
+        console.log("Transaction failed:", e);
+        res.status(400);
+        res.json({ status: "Failed" });
+        return;
+      }
+    })
+    // If the user could not be validated
+    .catch(() => {
+      res.status(400);
+      res.json({ status: "Invalid token" });
+      return;
+    });
+});
+
 // Export the router
 module.exports = router;
