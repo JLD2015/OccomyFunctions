@@ -6,7 +6,6 @@ const firebase = require("firebase-admin");
 const firebaseServiceAccountKey = require("./certificates/firebaseServiceAccountKey.json");
 const authRouter = require("./routes/auth");
 const emailRouter = require("./routes/email");
-const messagingRouter = require("./routes/messaging");
 const transactRouter = require("./routes/transact");
 
 // Create Express app
@@ -21,7 +20,6 @@ app.use(logger("dev"));
 // Setup routes
 app.use("/auth", authRouter);
 app.use("/email", emailRouter);
-app.use("/messaging", messagingRouter);
 app.use("/transact", transactRouter);
 
 // Initialise firebase
@@ -34,4 +32,6 @@ app.get("/", (req, res) => {
   res.send("<div>Occomy functions server running</div>");
 });
 
-module.exports = app;
+app.listen(3000, () => {
+  console.log(`Occomy functions server running on port ${3000}`)
+})

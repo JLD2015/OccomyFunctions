@@ -4,13 +4,12 @@
   "description": "An express application to run Occomy backend functions",
   "main": "app.js",
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node app.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@xmpp/client": "^0.13.1",
-    "apn": "^2.2.0",
     "cors": "^2.8.5",
     "express": "^4.18.1",
     "firebase-admin": "^11.0.1",

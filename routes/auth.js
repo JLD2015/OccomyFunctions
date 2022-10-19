@@ -1,4 +1,3 @@
-const client = require("@xmpp/client").client;
 const express = require("express");
 const firebase = require("firebase-admin");
 const formidable = require("formidable");
@@ -8,7 +7,6 @@ const randomIDGenerator =
 const request = require("request");
 const router = express.Router();
 const { v4: uuid } = require("uuid");
-const xml = require("@xmpp/client").xml;
 
 // Create account
 router.post("/createaccount", async (req, res) => {

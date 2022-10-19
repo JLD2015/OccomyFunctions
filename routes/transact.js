@@ -1,10 +1,10 @@
-const APNsNotification =
-  require("../functions/sendNotification").APNsNotification;
-const decrypt = require("../functions/cryptography").decrypt;
-const express = require("express");
-const firebase = require("firebase-admin");
+const auth = require("firebase-admin").auth;
+const firestore = require("firebase-admin").firestore;
 const randomIDGenerator =
   require("../functions/randomIDGenerator").randomIDGenerator;
+const sendNotification =
+  require("../functions/sendNotification").sendNotification;
+const express = require("express");
 const router = express.Router();
 
 // Create a transaction
@@ -40,8 +40,7 @@ router.post("/createtransaction", async (req, res) => {
   const description = req.body.description;
 
   // Retrieve the merchant's profile
-  const merchantDoc = await firebase
-    .firestore()
+  const merchantDoc = await firestore()
     .collection("users")
     .where("apiKey", "==", apikey)
     .get();
@@ -60,10 +59,7 @@ router.post("/createtransaction", async (req, res) => {
     var uniqueID = randomIDGenerator(8);
 
     // Make sure transactionID is unique
-    const docRef = firebase
-      .firestore()
-      .collection("transactions")
-      .doc("transactionIDs");
+    const docRef = firestore().collection("transactions").doc("transactionIDs");
     const doc = await docRef.get();
 
     if (!doc.exists) {
@@ -71,8 +67,7 @@ router.post("/createtransaction", async (req, res) => {
       const data = {
         transactionIDs: [uniqueID],
       };
-      await firebase
-        .firestore()
+      await firestore()
         .collection("transactions")
         .doc("transactionIDs")
         .set(data);
@@ -83,7 +78,7 @@ router.post("/createtransaction", async (req, res) => {
         uniqueID = randomIDGenerator(8);
       }
       await docRef.update({
-        transactionIDs: firebase.firestore.FieldValue.arrayUnion(uniqueID),
+        transactionIDs: firestore.FieldValue.arrayUnion(uniqueID),
       });
     }
 
@@ -96,16 +91,13 @@ router.post("/createtransaction", async (req, res) => {
       merchantProfilePhoto: merchantProfilePhoto,
       transactionID: uniqueID,
       status: "pending",
-      date: firebase.firestore.FieldValue.serverTimestamp(),
+      date: firestore.FieldValue.serverTimestamp(),
       customerID: " ",
       customerName: " ",
       customerProfilePhoto: " ",
     };
 
-    const res2 = await firebase
-      .firestore()
-      .collection("transactions")
-      .add(data);
+    const res2 = await firestore().collection("transactions").add(data);
 
     res.status(200);
     res.json({
@@ -154,18 +146,17 @@ router.post("/approvetransaction", async (req, res) => {
   const longitude = req.body.longitude;
 
   // Verify the token
-  firebase
-    .auth()
+  auth()
     .verifyIdToken(authorization)
     .then((decodedToken) => {
       const uid = decodedToken.uid;
 
       //Run the transaction
       try {
-        firebase.firestore().runTransaction(async (transaction) => {
+        firestore().runTransaction(async (transaction) => {
           // 1. Read operations
           const transactionDoc = await transaction.get(
-            firebase.firestore().collection("transactions").doc(transactionid)
+            firestore().collection("transactions").doc(transactionid)
           );
           const transactionData = transactionDoc.data();
 
@@ -176,15 +167,12 @@ router.post("/approvetransaction", async (req, res) => {
           }
 
           const merchantDoc = await transaction.get(
-            firebase
-              .firestore()
-              .collection("users")
-              .doc(transactionData.merchantID)
+            firestore().collection("users").doc(transactionData.merchantID)
           );
           const merchantData = merchantDoc.data();
 
           const customerDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(uid)
+            firestore().collection("users").doc(uid)
           );
           const customerData = customerDoc.data();
 
@@ -208,8 +196,7 @@ router.post("/approvetransaction", async (req, res) => {
           if (customerData.balance >= transactionData.amount) {
             // Merchant values
             transaction.update(
-              firebase
-                .firestore()
+              firestore()
                 .collection("users")
                 .doc(transactionData["merchantID"]),
               {
@@ -218,25 +205,19 @@ router.post("/approvetransaction", async (req, res) => {
             );
 
             // Customer values
-            transaction.update(
-              firebase.firestore().collection("users").doc(uid),
-              {
-                balance: customerData.balance - transactionData.amount,
-              }
-            );
+            transaction.update(firestore().collection("users").doc(uid), {
+              balance: customerData.balance - transactionData.amount,
+            });
 
             // Transaction Values
             transaction.update(
-              firebase
-                .firestore()
-                .collection("transactions")
-                .doc(transactionid),
+              firestore().collection("transactions").doc(transactionid),
               {
                 customerName: customerData.name,
                 customerID: customerDoc.id,
                 customerProfilePhoto: customerData.profilePhoto,
                 status: "approved",
-                date: firebase.firestore.FieldValue.serverTimestamp(),
+                date: firestore.FieldValue.serverTimestamp(),
                 latitude: latitude,
                 longitude: longitude,
               }
@@ -245,52 +226,20 @@ router.post("/approvetransaction", async (req, res) => {
             // Send notifications to everybody
 
             // Merchant
-            for (const token of merchantData.APNs) {
-              APNsNotification(
+            for (const token of merchantData.fcmTokens) {
+              sendNotification(
                 token,
-                "Received Payment",
-                `Received R${transactionData.amount.toFixed(2)} from ${
-                  customerData.name
-                }`,
-                function (status, APNsCode) {
-                  if (status == "Failed") {
-                    // Remove the token from the database
-                    firebase
-                      .firestore()
-                      .collection("users")
-                      .doc(merchantDoc.id)
-                      .update({
-                        APNs: firebase.firestore.FieldValue.arrayRemove(
-                          APNsCode
-                        ),
-                      });
-                  }
-                }
+                "Funds Received",
+                `Received R${transactionData.amount} from ${customerData.name}`
               );
             }
 
             // Customer
-            for (const token of customerData.APNs) {
-              APNsNotification(
+            for (const token of customerData.fcmTokens) {
+              sendNotification(
                 token,
                 "Made Payment",
-                `Paid R${transactionData.amount.toFixed(2)} to ${
-                  merchantData.name
-                }`,
-                function (status, APNsCode) {
-                  if (status == "Failed") {
-                    // Remove the token from the database
-                    firebase
-                      .firestore()
-                      .collection("users")
-                      .doc(customerDoc.id)
-                      .update({
-                        APNs: firebase.firestore.FieldValue.arrayRemove(
-                          APNsCode
-                        ),
-                      });
-                  }
-                }
+                `Paid R${transactionData.amount} to ${merchantData.name}`
               );
             }
 
@@ -299,16 +248,13 @@ router.post("/approvetransaction", async (req, res) => {
             return;
           } else {
             transaction.update(
-              firebase
-                .firestore()
-                .collection("transactions")
-                .doc(transactionid),
+              firestore().collection("transactions").doc(transactionid),
               {
                 customerName: customerData.name,
                 customerID: customerDoc.id,
                 customerProfilePhoto: customerData.profilePhoto,
                 status: "declined",
-                date: firebase.firestore.FieldValue.serverTimestamp(),
+                date: firestore.FieldValue.serverTimestamp(),
                 latitude: latitude,
                 longitude: longitude,
               }
@@ -353,25 +299,20 @@ router.post("/declinetransaction", async (req, res) => {
   const transactionid = req.body.transactionid;
 
   // Verify the token
-  firebase
-    .auth()
+  auth()
     .verifyIdToken(authorization)
     .then((decodedToken) => {
       const uid = decodedToken.uid;
 
       // Run transaction
       try {
-        firebase
-          .firestore()
+        firestore()
           .runTransaction(async (transaction) => {
             transaction.update(
-              firebase
-                .firestore()
-                .collection("transactions")
-                .doc(transactionid),
+              firestore().collection("transactions").doc(transactionid),
               {
                 status: "declined",
-                date: firebase.firestore.FieldValue.serverTimestamp(),
+                date: firestore.FieldValue.serverTimestamp(),
               }
             );
           })
@@ -421,8 +362,7 @@ router.post("/withdrawal", async (req, res) => {
   amount = Number(amount);
 
   // Verify the token
-  firebase
-    .auth()
+  auth()
     .verifyIdToken(authorization)
     .then((decodedToken) => {
       const uid = decodedToken.uid;
@@ -430,10 +370,10 @@ router.post("/withdrawal", async (req, res) => {
 
       // Run transaction
       try {
-        firebase.firestore().runTransaction(async (transaction) => {
+        firestore().runTransaction(async (transaction) => {
           // 1. Read operations
           const userDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(uid)
+            firestore().collection("users").doc(uid)
           );
           const userData = userDoc.data();
 
@@ -445,44 +385,24 @@ router.post("/withdrawal", async (req, res) => {
           }
 
           // Update the user's balance and fees
-          transaction.update(
-            firebase.firestore().collection("users").doc(uid),
-            {
-              balance: userData.balance - amount - withdrawalFees,
-            }
-          );
+          transaction.update(firestore().collection("users").doc(uid), {
+            balance: userData.balance - amount - withdrawalFees,
+          });
 
           // Record the withdrawal in the withdrawals collection
-          transaction.set(
-            firebase.firestore().collection("withdrawals").doc(),
-            {
-              amount: amount,
-              date: firebase.firestore.FieldValue.serverTimestamp(),
-              processed: false,
-              userID: uid,
-            }
-          );
+          transaction.set(firestore().collection("withdrawals").doc(), {
+            amount: amount,
+            date: firestore.FieldValue.serverTimestamp(),
+            processed: false,
+            userID: uid,
+          });
 
           // Send notification to the user
-          for (const token of userData.APNs) {
-            APNsNotification(
+          for (const token of userData.fcmTokens) {
+            sendNotification(
               token,
               "Withdrawal",
-              `Withdrew R${Number(amount).toFixed(2)}`,
-              function (status, APNsCode) {
-                if (status == "Failed") {
-                  // Remove the token from the database
-                  firebase
-                    .firestore()
-                    .collection("users")
-                    .doc(userDoc.id)
-                    .update({
-                      APNs: firebase.firestore.FieldValue.arrayRemove(APNsCode),
-                    });
-                } else {
-                  console.log("Sent");
-                }
-              }
+              `Successful withdrawal of R${amount}`
             );
           }
 
@@ -555,7 +475,7 @@ router.post("/sendfunds", async (req, res) => {
     return;
   }
   const latitude = req.body.latitude;
-  
+
   // Get the longitude
   if (!req.body.longitude) {
     res.status(400);
@@ -565,23 +485,22 @@ router.post("/sendfunds", async (req, res) => {
   const longitude = req.body.longitude;
 
   // Validate the user
-  firebase
-    .auth()
+  auth()
     .verifyIdToken(authorization)
     .then(async (decodedToken) => {
       // Run transaction
       try {
-        firebase.firestore().runTransaction(async (transaction) => {
+        firestore().runTransaction(async (transaction) => {
           const uid = decodedToken.uid;
 
           // 1. Read operations
           const customerDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(uid)
+            firestore().collection("users").doc(uid)
           );
           const customerData = customerDoc.data();
 
           const merchantDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(merchantid)
+            firestore().collection("users").doc(merchantid)
           );
           const merchantData = merchantDoc.data();
 
@@ -589,8 +508,7 @@ router.post("/sendfunds", async (req, res) => {
           var uniqueID = randomIDGenerator(8);
 
           // Make sure transactionID is unique
-          const docRef = firebase
-            .firestore()
+          const docRef = firestore()
             .collection("transactions")
             .doc("transactionIDs");
           const doc = await docRef.get();
@@ -600,8 +518,7 @@ router.post("/sendfunds", async (req, res) => {
             const data = {
               transactionIDs: [uniqueID],
             };
-            await firebase
-              .firestore()
+            await firestore()
               .collection("transactions")
               .doc("transactionIDs")
               .set(data);
@@ -612,8 +529,7 @@ router.post("/sendfunds", async (req, res) => {
               uniqueID = randomIDGenerator(8);
             }
             await docRef.update({
-              transactionIDs:
-                firebase.firestore.FieldValue.arrayUnion(uniqueID),
+              transactionIDs: firestore.FieldValue.arrayUnion(uniqueID),
             });
           }
 
@@ -628,13 +544,33 @@ router.post("/sendfunds", async (req, res) => {
             merchantProfilePhoto: merchantData.profilePhoto,
             transactionID: uniqueID,
             status: "approved",
-            date: firebase.firestore.FieldValue.serverTimestamp(),
+            date: firestore.FieldValue.serverTimestamp(),
             customerID: customerDoc.id,
             customerName: customerData.name,
             customerProfilePhoto: customerData.profilePhoto,
           };
 
-          await firebase.firestore().collection("transactions").add(data);
+          await firestore().collection("transactions").add(data);
+
+          // Send notifications to everybody
+
+          // Merchant
+          for (const token of merchantData.fcmTokens) {
+            sendNotification(
+              token,
+              "Funds Received",
+              `Received R${amount} from ${customerData.name}`
+            );
+          }
+
+          // Customer
+          for (const token of customerData.fcmTokens) {
+            sendNotification(
+              token,
+              "Payment",
+              `Paid R${amount} to ${merchantData.name}`
+            );
+          }
 
           res.status(200);
           res.json({ status: "Success" });
@@ -704,7 +640,7 @@ router.post("/requestpayment", async (req, res) => {
     return;
   }
   const latitude = req.body.latitude;
-  
+
   // Get the longitude
   if (!req.body.longitude) {
     res.status(400);
@@ -714,23 +650,22 @@ router.post("/requestpayment", async (req, res) => {
   const longitude = req.body.longitude;
 
   // Validate the user
-  firebase
-    .auth()
+  auth()
     .verifyIdToken(authorization)
     .then(async (decodedToken) => {
       // Run transaction
       try {
-        firebase.firestore().runTransaction(async (transaction) => {
+        firestore().runTransaction(async (transaction) => {
           const uid = decodedToken.uid;
 
           // 1. Read operations
           const customerDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(customerid)
+            firestore().collection("users").doc(customerid)
           );
           const customerData = customerDoc.data();
 
           const merchantDoc = await transaction.get(
-            firebase.firestore().collection("users").doc(uid)
+            firestore().collection("users").doc(uid)
           );
           const merchantData = merchantDoc.data();
 
@@ -738,8 +673,7 @@ router.post("/requestpayment", async (req, res) => {
           var uniqueID = randomIDGenerator(8);
 
           // Make sure transactionID is unique
-          const docRef = firebase
-            .firestore()
+          const docRef = firestore()
             .collection("transactions")
             .doc("transactionIDs");
           const doc = await docRef.get();
@@ -749,8 +683,7 @@ router.post("/requestpayment", async (req, res) => {
             const data = {
               transactionIDs: [uniqueID],
             };
-            await firebase
-              .firestore()
+            await firestore()
               .collection("transactions")
               .doc("transactionIDs")
               .set(data);
@@ -761,8 +694,7 @@ router.post("/requestpayment", async (req, res) => {
               uniqueID = randomIDGenerator(8);
             }
             await docRef.update({
-              transactionIDs:
-                firebase.firestore.FieldValue.arrayUnion(uniqueID),
+              transactionIDs: firestore.FieldValue.arrayUnion(uniqueID),
             });
           }
 
@@ -777,13 +709,24 @@ router.post("/requestpayment", async (req, res) => {
             merchantProfilePhoto: merchantData.profilePhoto,
             transactionID: uniqueID,
             status: "requested",
-            date: firebase.firestore.FieldValue.serverTimestamp(),
+            date: firestore.FieldValue.serverTimestamp(),
             customerID: customerDoc.id,
             customerName: customerData.name,
             customerProfilePhoto: customerData.profilePhoto,
           };
 
-          await firebase.firestore().collection("transactions").add(data);
+          await firestore().collection("transactions").add(data);
+
+          // Send notifications to everybody
+
+          // Customer
+          for (const token of customerData.fcmTokens) {
+            sendNotification(
+              token,
+              "Payment Request",
+              `${merchantData.name} has requested a payment of ${amount}`
+            );
+          }
 
           res.status(200);
           res.json({ status: "Success" });
@@ -805,5 +748,4 @@ router.post("/requestpayment", async (req, res) => {
     });
 });
 
-// Export the router
 module.exports = router;
