@@ -564,11 +564,13 @@ router.post("/sendfunds", async (req, res) => {
 
             transaction.set(firestore().collection("transactions").doc(), data);
 
+            console.log(amount);
+
             // Update the merchant balance
             transaction.update(
               firestore().collection("users").doc(merchantDoc.id),
               {
-                balance: Number(merchantData.balance + amount),
+                balance: Number(merchantData.balance) + Number(amount),
               }
             );
 
@@ -576,7 +578,7 @@ router.post("/sendfunds", async (req, res) => {
             transaction.update(
               firestore().collection("users").doc(customerDoc.id),
               {
-                balance: Number(customerData.balance - amount),
+                balance: Number(customerData.balance) - Number(amount),
               }
             );
 
