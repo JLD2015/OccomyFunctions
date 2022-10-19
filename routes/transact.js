@@ -504,77 +504,111 @@ router.post("/sendfunds", async (req, res) => {
           );
           const merchantData = merchantDoc.data();
 
-          // Generate transaction ID
-          var uniqueID = randomIDGenerator(8);
+          // 2. Write operations
+          // Make sure customer isn't transacting with himself
+          if (merchantDoc.id == customerDoc.id) {
+            res.status(400);
+            res.json({ status: "Cannot transact with yourself" });
+            return;
+          }
 
-          // Make sure transactionID is unique
-          const docRef = firestore()
-            .collection("transactions")
-            .doc("transactionIDs");
-          const doc = await docRef.get();
+          // Update necesary data
+          if (customerData.balance >= amount) {
+            // Generate transaction ID
+            var uniqueID = randomIDGenerator(8);
 
-          if (!doc.exists) {
-            // If the document doesn't exist we need to create it
-            const data = {
-              transactionIDs: [uniqueID],
-            };
-            await firestore()
-              .collection("transactions")
-              .doc("transactionIDs")
-              .set(data);
-          } else {
-            // If the document does exist we just add the unique transaction ID
-            const existingIDs = doc.data()["transactionIDs"];
-            while (existingIDs.includes(uniqueID)) {
-              uniqueID = randomIDGenerator(8);
+            // Make sure transactionID is unique
+            doc = await transaction.get(
+              firestore().collection("transactions").doc("transactionIDs")
+            );
+
+            if (!doc.exists) {
+              // If the document doesn't exist we need to create it
+              const data = {
+                transactionIDs: [uniqueID],
+              };
+              transaction.set(
+                firestore().collection("transactions").doc("transactionIDs"),
+                data
+              );
+            } else {
+              // If the document does exist we just add the unique transaction ID
+              const existingIDs = doc.data()["transactionIDs"];
+              while (existingIDs.includes(uniqueID)) {
+                uniqueID = randomIDGenerator(8);
+              }
+              transaction.update(
+                firestore().collection("transactions").doc("transactionIDs"),
+                {
+                  transactionIDs: firestore.FieldValue.arrayUnion(uniqueID),
+                }
+              );
             }
-            await docRef.update({
-              transactionIDs: firestore.FieldValue.arrayUnion(uniqueID),
-            });
-          }
 
-          // Create transaction on firestore
-          const data = {
-            amount: parseFloat(amount),
-            description: description,
-            latitude: latitude,
-            longitude: longitude,
-            merchantID: merchantDoc.id,
-            merchantName: merchantData.name,
-            merchantProfilePhoto: merchantData.profilePhoto,
-            transactionID: uniqueID,
-            status: "approved",
-            date: firestore.FieldValue.serverTimestamp(),
-            customerID: customerDoc.id,
-            customerName: customerData.name,
-            customerProfilePhoto: customerData.profilePhoto,
-          };
+            // Create transaction on firestore
+            const data = {
+              amount: parseFloat(amount),
+              description: description,
+              latitude: latitude,
+              longitude: longitude,
+              merchantID: merchantDoc.id,
+              merchantName: merchantData.name,
+              merchantProfilePhoto: merchantData.profilePhoto,
+              transactionID: uniqueID,
+              status: "approved",
+              date: firestore.FieldValue.serverTimestamp(),
+              customerID: customerDoc.id,
+              customerName: customerData.name,
+              customerProfilePhoto: customerData.profilePhoto,
+            };
 
-          await firestore().collection("transactions").add(data);
+            transaction.set(firestore().collection("transactions").doc(), data);
 
-          // Send notifications to everybody
-
-          // Merchant
-          for (const token of merchantData.fcmTokens) {
-            sendNotification(
-              token,
-              "Funds Received",
-              `Received R${amount} from ${customerData.name}`
+            // Update the merchant balance
+            transaction.update(
+              firestore().collection("users").doc(merchantDoc.id),
+              {
+                balance: Number(merchantData.balance + amount),
+              }
             );
-          }
 
-          // Customer
-          for (const token of customerData.fcmTokens) {
-            sendNotification(
-              token,
-              "Payment",
-              `Paid R${amount} to ${merchantData.name}`
+            // Update the customer balance
+            transaction.update(
+              firestore().collection("users").doc(customerDoc.id),
+              {
+                balance: Number(customerData.balance - amount),
+              }
             );
-          }
 
-          res.status(200);
-          res.json({ status: "Success" });
-          return;
+            // Send notifications to everybody
+
+            // Merchant
+            for (const token of merchantData.fcmTokens) {
+              sendNotification(
+                token,
+                "Funds Received",
+                `Received R${amount} from ${customerData.name}`
+              );
+            }
+
+            // Customer
+            for (const token of customerData.fcmTokens) {
+              sendNotification(
+                token,
+                "Made Payment",
+                `Paid R${amount} to ${merchantData.name}`
+              );
+            }
+
+            res.status(200);
+            res.json({ status: "Success" });
+            return;
+          } else {
+            // If the customer had insufficient funds
+            res.status(400);
+            res.json({ status: "Failed" });
+            return;
+          }
         });
       } catch (e) {
         // If the transaction was unsuccessful
