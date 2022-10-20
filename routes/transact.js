@@ -661,29 +661,13 @@ router.post("/requestpayment", async (req, res) => {
   }
   const description = req.body.description;
 
-  // Get the merchantID
+  // Get the customerID
   if (!req.body.customerid) {
     res.status(400);
     res.json({ status: "Please provide a valid customerid" });
     return;
   }
   const customerid = req.body.customerid;
-
-  // Get the latitude
-  if (!req.body.latitude) {
-    res.status(400);
-    res.json({ status: "Please provide a valid latitude" });
-    return;
-  }
-  const latitude = req.body.latitude;
-
-  // Get the longitude
-  if (!req.body.longitude) {
-    res.status(400);
-    res.json({ status: "Please provide a valid longitude" });
-    return;
-  }
-  const longitude = req.body.longitude;
 
   // Validate the user
   auth()
@@ -738,8 +722,6 @@ router.post("/requestpayment", async (req, res) => {
           const data = {
             amount: parseFloat(amount),
             description: description,
-            latitude: latitude,
-            longitude: longitude,
             merchantID: merchantDoc.id,
             merchantName: merchantData.name,
             merchantProfilePhoto: merchantData.profilePhoto,
