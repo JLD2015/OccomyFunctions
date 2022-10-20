@@ -186,7 +186,7 @@ router.post("/approvetransaction", async (req, res) => {
           }
 
           // Make sure the transaction hasn't already been processed
-          if (transactionData.status != "pending") {
+          if (transactionData.status != "pending" || transactionData.status != "requested") {
             res.status(400);
             res.json({ status: "Transaction already processed" });
             return;
