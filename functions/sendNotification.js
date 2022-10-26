@@ -1,6 +1,6 @@
 const admin = require("firebase-admin");
 
-function sendNotification(token, title, body) {
+function sendNotification(userid, token, title, body) {
   const message = {
     notification: {
       title: title,
@@ -23,16 +23,32 @@ function sendNotification(token, title, body) {
 
   // Send a message to the device corresponding to the provided
   // registration token.
-  admin
-    .messaging()
-    .send(message)
-    .then((response) => {
-      // Response is a message ID string.
-      console.log("Successfully sent message:", response);
-    })
-    .catch((error) => {
-      console.log("Error sending message:", error);
-    });
+  try {
+    admin
+      .messaging()
+      .send(message)
+      .then((response) => {
+        // Response is a message ID string.
+        console.log("Successfully sent message:", response);
+      })
+      .catch(async (e) => {
+        if (e.message == "Requested entity was not found.") {
+
+          await admin
+            .firestore()
+            .collection("users")
+            .doc(userid)
+            .update({
+              fcmTokens: admin.firestore.FieldValue.arrayRemove(token),
+            });
+        }
+
+        // Another kind of error
+        console.log(e.message);
+      });
+  } catch (e) {
+    console.log(e);
+  }
 }
 
 module.exports = { sendNotification };

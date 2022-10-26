@@ -186,7 +186,10 @@ router.post("/approvetransaction", async (req, res) => {
           }
 
           // Make sure the transaction hasn't already been processed
-          if (transactionData.status == "approved" || transactionData.status == "declined") {
+          if (
+            transactionData.status == "approved" ||
+            transactionData.status == "declined"
+          ) {
             res.status(400);
             res.json({ status: "Transaction already processed" });
             return;
@@ -228,6 +231,7 @@ router.post("/approvetransaction", async (req, res) => {
             // Merchant
             for (const token of merchantData.fcmTokens) {
               sendNotification(
+                merchantDoc.id,
                 token,
                 "Funds Received",
                 `Received R${transactionData.amount} from ${customerData.name}`
@@ -237,6 +241,7 @@ router.post("/approvetransaction", async (req, res) => {
             // Customer
             for (const token of customerData.fcmTokens) {
               sendNotification(
+                customerDoc.id,
                 token,
                 "Made Payment",
                 `Paid R${transactionData.amount} to ${merchantData.name}`
@@ -400,6 +405,7 @@ router.post("/withdrawal", async (req, res) => {
           // Send notification to the user
           for (const token of userData.fcmTokens) {
             sendNotification(
+              userDoc.id,
               token,
               "Withdrawal",
               `Successful withdrawal of R${amount}`
@@ -564,8 +570,6 @@ router.post("/sendfunds", async (req, res) => {
 
             transaction.set(firestore().collection("transactions").doc(), data);
 
-            console.log(amount);
-
             // Update the merchant balance
             transaction.update(
               firestore().collection("users").doc(merchantDoc.id),
@@ -587,6 +591,7 @@ router.post("/sendfunds", async (req, res) => {
             // Merchant
             for (const token of merchantData.fcmTokens) {
               sendNotification(
+                merchantDoc.id,
                 token,
                 "Funds Received",
                 `Received R${amount} from ${customerData.name}`
@@ -596,6 +601,7 @@ router.post("/sendfunds", async (req, res) => {
             // Customer
             for (const token of customerData.fcmTokens) {
               sendNotification(
+                customerDoc.id,
                 token,
                 "Made Payment",
                 `Paid R${amount} to ${merchantData.name}`
@@ -740,6 +746,7 @@ router.post("/requestpayment", async (req, res) => {
           // Customer
           for (const token of customerData.fcmTokens) {
             sendNotification(
+              customerDoc.id,
               token,
               "Payment Request",
               `${merchantData.name} has requested a payment of ${amount}`
