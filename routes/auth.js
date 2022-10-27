@@ -431,10 +431,16 @@ router.post("/updateprofiledetails", async (req, res) => {
               profilePhoto: base64Image,
             });
 
+            // Update the user's contact details
+            firebase.firestore().collection("contacts").doc(uid).update({
+              name: name,
+              phoneNumber: phone,
+              profilePhoto: base64Image,
+            });
+
             res.status(200);
             res.json({ status: "Success" });
             return;
-
           });
         } catch (error) {
           console.log(error);
